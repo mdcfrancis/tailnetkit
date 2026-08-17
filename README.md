@@ -91,6 +91,48 @@ Then issue requests against `connection.baseURL` with `connection.urlSession`,
 sending `connection.apiToken` as a bearer token. In tailnet mode `baseURL`
 points at a local relay, not the server's tailnet address — see below.
 
+## Go hosts
+
+The server half has a Go counterpart under `go/`, for hosts that are not Swift
+apps. It speaks the same pairing format, so a Go server pairs a Swift client
+with no translation layer in between.
+
+```go
+node := tailnet.NewServer(tailnet.Config{
+    HostName:       "acme",
+    StateDirectory: filepath.Join(appDir, "tsnet"),
+    AuthKey:        authKey, // empty runs browser sign-in instead
+})
+
+go node.Serve(ctx, 8945, handler, tailnet.Hooks{
+    OnStatus:   func(text string) { log.Println(text) },
+    OnLoginURL: func(url string) { exec.Command("open", url).Start() },
+    OnAddress:  func(ip string) { tailnetIP = ip }, // feeds the pairing QR
+})
+```
+
+Unlike the Swift `TailnetServer`, which pumps tailnet connections to a separate
+loopback process, a Go host already holds the `http.Handler` — so it is served
+directly and there is no byte pump. Either way the handler is unchanged.
+
+Mint the QR from the address it reports:
+
+```go
+payload := pairing.New(tailnetIP, 8945, apiToken,
+    pairing.WithAuthKey(authKey),          // omit to make the client sign in
+    pairing.WithApp(AcmeConfig{Theme: "dark"}))
+
+png, err := pairing.QRPNG(payload, 512)
+```
+
+`pairing` mirrors `PairingPayload` field for field and encodes byte-identically
+to Swift's `.sortedKeys` output, which its tests assert — a divergence there
+would otherwise surface only as a scan that does nothing.
+
+The module lives in `go/` rather than at the repo root because
+`Vendor/libtailscale` is seen as Go's `vendor/` on a case-insensitive
+filesystem, which breaks every build at the root.
+
 ## What's inside
 
 | | |
@@ -106,6 +148,12 @@ points at a local relay, not the server's tailnet address — see below.
 
 `TailnetKitUI` adds `PairingQRView` (macOS), `PairScannerView` and
 `PairingScannerSheet` (iOS), and `PairingWelcomeView` (iOS).
+
+On the Go side, `go/tailnet` is `TailnetNode` + `TailnetServer` and
+`go/pairing` is `PairingPayload` + `PairingQR`. There is no Go client: a Go
+process reaching a tailnet service wants plain `tsnet.Dial`, not a loopback
+relay, which exists only because `URLSession` cannot use a SOCKS proxy for
+cleartext HTTP on iOS.
 
 ## Things worth knowing
 
