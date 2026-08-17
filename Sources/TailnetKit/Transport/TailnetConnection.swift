@@ -74,10 +74,10 @@ public final class TailnetConnection {
         /// (`transportMode`, `serverHost`, …); changing it on a shipped app
         /// looks to the user like being logged out.
         public var defaultsPrefix: String
-        /// When set, `PREFIX_MODE` / `_HOST` / `_PORT` / `_TOKEN` environment
-        /// variables override the stored settings. Session-only and never
-        /// persisted — this is what makes simulator automation possible,
-        /// since a simulator cannot scan a QR code.
+        /// When set, `PREFIX_MODE` / `_HOST` / `_PORT` / `_TOKEN` / `_TSKEY`
+        /// environment variables override the stored settings. Session-only
+        /// and never persisted — this is what makes simulator automation
+        /// possible, since a simulator cannot scan a QR code.
         public var environmentPrefix: String?
         public var defaultHost: String
         public var defaultPort: Int
@@ -190,7 +190,11 @@ public final class TailnetConnection {
             ?? configuration.defaultPort
         useHTTPS = defaults.bool(forKey: storedKey("serverHTTPS"))
         apiToken = override("TOKEN") ?? keychain.get("api-token")
-        tailscaleAuthKey = keychain.get("ts-auth-key")
+        // TSKEY makes tailnet mode reachable from a simulator, which has no
+        // camera to pair with and so would otherwise be stuck at a browser
+        // sign-in. Overrides are session-only, so this never lands in the
+        // Keychain.
+        tailscaleAuthKey = override("TSKEY") ?? keychain.get("ts-auth-key")
     }
 
     private func key(_ name: String) -> String {
