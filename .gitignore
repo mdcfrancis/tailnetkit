@@ -1,0 +1,10 @@
+# TailscaleKit.xcframework is produced by `make bootstrap` (~100MB of slices).
+/binary/
+
+# SwiftPM / Xcode
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+**/xcuserdata/**
+.DS_Store
