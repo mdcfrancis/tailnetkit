@@ -30,6 +30,17 @@ Go; override `DEVELOPER_DIR` if Xcode is not at the default path.
 Then depend on the package by path or URL, and add the products you need —
 `TailnetKit` for the transport, `TailnetKitUI` for the ready-made screens.
 
+`make bootstrap` is a prerequisite for *consuming* the package too, not just for
+working on it: resolution succeeds without the xcframework and the build then
+fails with `local binary target 'TailscaleKit' ... does not contain a binary
+artifact`, naming a path inside `.build/checkouts` rather than the command that
+fills it.
+
+Consider keeping the parts that do not touch the transport in a target that does
+not depend on TailnetKit — a model and an API client need a base URL, a token
+and a `URLSession`, none of which require a tunnel. That layer then builds and
+tests in a second on any machine, and only the app target needs the artifact.
+
 ## Server side
 
 ```swift
@@ -97,6 +108,21 @@ The server half has a Go counterpart under `go/`, for hosts that are not Swift
 apps. It speaks the same pairing format, so a Go server pairs a Swift client
 with no translation layer in between.
 
+The module is private and its packages pull in `tailscale.com`, so a fresh
+consumer needs three lines before the first build — and naming the packages
+rather than the module, since `go get` on the module alone reports success and
+leaves `tailscale.com/tsnet` out of `go.sum`:
+
+```bash
+go env -w GOPRIVATE='github.com/mdcfrancis/*'
+git config --global credential.https://github.com.helper '!gh auth git-credential'
+go get github.com/mdcfrancis/tailnetkit/go/tailnet github.com/mdcfrancis/tailnetkit/go/pairing
+```
+
+Worth knowing what that costs before you start: `tailscale.com` and
+`gvisor.dev/gvisor` are a large tree, and a host with a dependency policy may
+need to clear it explicitly.
+
 ```go
 node := tailnet.NewServer(tailnet.Config{
     HostName:       "acme",
@@ -161,6 +187,21 @@ cleartext HTTP on iOS.
   `proxyConfigurations` silently drops cleartext HTTP on iOS, so `TailnetRelay`
   binds 127.0.0.1 and pumps each connection over a native tsnet dial instead.
   This is why `baseURL` is a localhost URL in tailnet mode.
+
+- **"The handler is unchanged" is a promise about routing, not about auth.**
+  Every check you already have does apply — which is the problem when those
+  checks are about *where* a request came from rather than *what* it carries. A
+  server that requires a loopback `Host`, or browser fetch metadata for CSRF,
+  will refuse every paired device: a tailnet client sends `100.x.y.z` as `Host`
+  and no fetch metadata at all. Loosening either check to let the tailnet in
+  gives up the defence on the loopback listener, where it was doing real work.
+  Give the tailnet listener its own chain instead — the routes are shared, the
+  gates are not:
+
+  ```go
+  srv := &http.Server{Handler: localOnly(mux)}       // a browser: Host + fetch metadata
+  node.Serve(ctx, port, bearerAuth(token, apiMux), hooks)  // a native client: the token
+  ```
 
 - **Auth keys are only needed once.** The node identity persists in
   `stateDirectory`; after the first join the key is never consulted. Reusable
