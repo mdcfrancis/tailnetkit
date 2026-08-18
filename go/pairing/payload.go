@@ -51,8 +51,20 @@ type Option func(*Payload)
 // WithAuthKey attaches a tailnet auth key so the client joins without an
 // interactive sign-in. An empty key is ignored rather than encoded, so an
 // unset key never rides along as an empty string a client would try to use.
+//
+// The normalisation happens here rather than being left to the field's
+// omitempty tag, because that is where Swift does it: PairingPayload's
+// initialiser maps "" to nil for the same reason. The encoding was
+// already correct and already tested — this is about the two halves
+// keeping the guarantee in the same place, so a caller reading
+// Payload.TailnetAuthKey back sees absence on both sides rather than
+// absence in the JSON and an empty string in the struct.
 func WithAuthKey(key string) Option {
-	return func(p *Payload) { p.TailnetAuthKey = key }
+	return func(p *Payload) {
+		if key != "" {
+			p.TailnetAuthKey = key
+		}
+	}
 }
 
 // WithApp attaches app-specific configuration under "app".

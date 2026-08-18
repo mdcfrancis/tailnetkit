@@ -169,3 +169,18 @@ func TestQRPNGRejectsUnusablePayload(t *testing.T) {
 		t.Fatal("rendered a QR for a payload with no host")
 	}
 }
+
+// The encoding is already covered by TestEmptyAuthKeyIsOmitted above.
+// What this adds is the field: Swift's initialiser maps "" to nil, so a
+// caller reading the payload back sees absence on both sides rather than
+// absence in the JSON and an empty string in the struct.
+func TestEmptyAuthKeyLeavesTheFieldUnset(t *testing.T) {
+	if p := New("h", 80, "t", WithAuthKey("")); p.TailnetAuthKey != "" {
+		t.Errorf("TailnetAuthKey = %q, want it unset", p.TailnetAuthKey)
+	}
+	// A real key is untouched, so the normalisation cannot be mistaken
+	// for dropping the feature.
+	if p := New("h", 80, "t", WithAuthKey("tskey-auth-xyz")); p.TailnetAuthKey != "tskey-auth-xyz" {
+		t.Errorf("TailnetAuthKey = %q", p.TailnetAuthKey)
+	}
+}
